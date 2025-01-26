@@ -55,10 +55,6 @@ Follow these steps to build this project on Windows.
 - [iglo](https://github.com/c-chiniquy/iglo)
 - [ImGui](https://github.com/ocornut/imgui)
 
-## Authors
-
-- [Christoffer Chiniquy](https://github.com/c-chiniquy)
-
 ## License
 
 This project is placed in the public domain (and dual licensed under MIT). See the [LICENSE](LICENSE) file for details.
