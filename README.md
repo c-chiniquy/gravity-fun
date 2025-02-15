@@ -4,7 +4,7 @@
 
 Gravity Fun is an interactive 2D n-body simulator.
 This is a personal programming project I created just for fun.
-The rendering abstraction layer [iglo](https://github.com/c-chiniquy/iglo) is used, with D3D12 serving as the rendering backend.
+My rendering abstraction layer [iglo](https://github.com/c-chiniquy/iglo) is used, with D3D12 serving as the rendering backend.
 
 ## Features
 
