@@ -41,7 +41,7 @@ My rendering abstraction layer [iglo](https://github.com/c-chiniquy/iglo) is use
 - For other:
   ```
   cmake -B build
-  cmake --build build
+  cmake --build build --config Release
   ```
 - CMake will automatically download AgilitySDK if needed and place it in the build folder.
 
