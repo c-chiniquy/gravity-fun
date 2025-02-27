@@ -28,27 +28,22 @@ My rendering abstraction layer [iglo](https://github.com/c-chiniquy/iglo) is use
 ![](images/merging-clusters.png)
 ![](images/nbody-heatmap.png)
 
-## Build
-
-### Minimum requirements
+## Minimum system requirements
 
 - Windows 10 (version 1909 or later)
-- A shader model 6.6 capable graphics card and graphics drivers
-- CMake 3.22 or higher
+- Shader model 6.6 capable graphics card and graphics drivers
 
-### Windows
+### Build on Windows
 
-Follow these steps to build this project on Windows.
-
-1. Download [nuget.exe](https://learn.microsoft.com/en-us/nuget/install-nuget-client-tools?tabs=windows#nugetexe-cli).
-
-2. Add `nuget.exe` to your system's environment PATH.
-
-3. Run `build.cmd` to generate Visual Studio 2019 project files using CMake. The generated project files will appear in a folder named `build`.
-   - **Note**: An internet connection is required during this step for NuGet to download Agility SDK (required for D3D12). The Agility SDK package will also be placed in the `build` folder.
-   - **Other IDEs**: The `build.cmd` script builds for Visual Studio 2019. If you want to build for another IDE, run CMake commands manually to generate project files for your chosen IDE. Note that the compatibility with IDEs other than Visual Studio is not guaranteed, as this is the only IDE tested so far.
-
-4. After the script completes, it will automatically open the Visual Studio solution file. From there, you can build and run the project.
+- Install [CMake](https://cmake.org/download/). Version 3.22 or higher is required.
+- Ensure CMake is accessible from the command line. 
+- For Visual Studio: Run `build.cmd`. Generated project files will appear in `/build/`. 
+- For other:
+  ```
+  cmake -B build
+  cmake --build build
+  ```
+- CMake will automatically download AgilitySDK if needed and place it in the build folder.
 
 ## Third Party Libraries
 
