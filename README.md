@@ -33,7 +33,7 @@ My rendering abstraction layer [iglo](https://github.com/c-chiniquy/iglo) is use
 - Windows 10 (version 1909 or later)
 - Shader model 6.6 capable graphics card and graphics drivers
 
-### Build on Windows
+## Build on Windows
 
 - Install [CMake](https://cmake.org/download/). Version 3.22 or higher is required.
 - Ensure CMake is accessible from the command line. 
