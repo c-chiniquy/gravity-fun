@@ -127,11 +127,15 @@ void Update(double elapsedSeconds)
 	// When paused and window is minimized, lower CPU usage
 	if (universe.GetPaused() && context.GetWindowMinimized())
 	{
-		ig::SleepMilliseconds(1);
+		ig::BasicSleep(1);
 	}
 
 	universe.Update(leftMouseButtonDown, rightMouseButtonDown);
 
+}
+
+void FixedUpdate()
+{
 }
 
 void OnEvent(ig::Event e)
@@ -676,8 +680,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInst, LPSTR lpCmdLine, in
 		ig::RenderSettings(ig::PresentMode::Vsync, ig::Format::BYTE_BYTE_BYTE_BYTE, numFramesInFlight, numBackBuffers)))
 	{
 		context.SetOnDeviceRemovedCallback(OnDeviceRemoved);
-		mainloop.SetMinimizedWindowBehaviour(ig::MainLoop::MinimizedWindowBehaviour::None);
-		mainloop.Run(context, Start, OnLoopExited, Draw, Update, OnEvent);
+		mainloop.SetWindowMinimizedBehaviour(ig::MainLoop::WindowMinimizedBehaviour::None);
+		mainloop.Run(context, Start, OnLoopExited, Draw, Update, FixedUpdate, OnEvent);
 	}
 	return 0;
 }
