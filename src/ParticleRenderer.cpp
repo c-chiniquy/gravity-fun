@@ -1,5 +1,5 @@
 #include "iglo.h"
-#include "igloBatchRenderer.h"
+#include "iglo_batch_renderer.h"
 #include "ShaderCommon.h"
 #include "ColorGradient.h"
 #include "ParticleRenderer.h"
@@ -12,6 +12,7 @@ void ParticleRenderer::Unload()
 	colorGradient = nullptr;
 	cmd.Unload();
 
+	transitionHeatmapLayout = false;
 	graphics = GraphicsParams();
 	computeHeatmap.Unload();
 	renderHeatmapGrayscale.Unload();
@@ -77,7 +78,7 @@ bool ParticleRenderer::Load(ig::IGLOContext& context)
 	heatmapDesc.depthState = ig::DepthDesc::DepthDisabled;
 	heatmapDesc.rasterizerState = ig::RasterizerDesc::NoCull;
 	heatmapDesc.renderTargetDesc = context.GetBackBufferRenderTargetDesc();
-	heatmapDesc.primitiveTopology = ig::Primitive::TriangleStrip;
+	heatmapDesc.primitiveTopology = ig::PrimitiveTopology::TriangleStrip;
 	heatmapDesc.vertexLayout = {};
 	renderHeatmapGrayscale.Load(context, heatmapDesc);
 
@@ -86,8 +87,6 @@ bool ParticleRenderer::Load(ig::IGLOContext& context)
 
 	ig::BlendDesc additiveBlend;
 	additiveBlend.enabled = true;
-	additiveBlend.logicOpEnabled = false;
-	additiveBlend.logicOp = ig::LogicOp::NoOperation;
 	additiveBlend.srcBlend = ig::BlendData::One;
 	additiveBlend.destBlend = ig::BlendData::One;
 	additiveBlend.blendOp = ig::BlendOperation::Add;
@@ -128,7 +127,7 @@ bool ParticleRenderer::Load(ig::IGLOContext& context)
 						params.pipelineDesc.VS = (d == (uint32_t)PermColor::Uniform) ?
 							ig::Shader(f_VS_Rects_UniColor.fileContent) :
 							ig::Shader(f_VS_Rects_ColorBuffer.fileContent);
-						params.pipelineDesc.primitiveTopology = ig::Primitive::TriangleList;
+						params.pipelineDesc.primitiveTopology = ig::PrimitiveTopology::TriangleList;
 					}
 					renderPrims[a][b][c][d].Load(context, params.pipelineDesc);
 				}
@@ -138,7 +137,7 @@ bool ParticleRenderer::Load(ig::IGLOContext& context)
 
 	this->context = &context;
 	this->isLoaded = true;
-	ResizeTextures(context.GetBackBufferSize());
+	ResizeTextures(context.GetBackBufferExtent());
 	return true;
 }
 
@@ -167,6 +166,8 @@ void ParticleRenderer::ResizeTextures(ig::Extent2D textureSize)
 	heatmap = std::make_shared<ig::Texture>();
 	heatmap->Load(*context, heatmapSize.width, heatmapSize.height, ig::Format::UINT32_NotNormalized, ig::TextureUsage::UnorderedAccess);
 	ig::Print(ig::ToString("Heatmap texture size ", heatmap->GetWidth(), "x", heatmap->GetHeight(), "\n"));
+
+	transitionHeatmapLayout = true;
 }
 
 void ParticleRenderer::SetGraphicsParams(const GraphicsParams& params)
@@ -178,10 +179,10 @@ void ParticleRenderer::SetGraphicsParams(const GraphicsParams& params)
 	this->graphics = params;
 
 	ig::Extent2D oldHeatmapSize = ig::Extent2D(heatmap->GetWidth(), heatmap->GetHeight());
-	ig::Extent2D newHeatmapSize = GetHeatmapSize(context->GetBackBufferSize(), params.heatmapPixelSize);
+	ig::Extent2D newHeatmapSize = GetHeatmapSize(context->GetBackBufferExtent(), params.heatmapPixelSize);
 	if (oldHeatmapSize != newHeatmapSize)
 	{
-		ResizeTextures(context->GetBackBufferSize());
+		ResizeTextures(context->GetBackBufferExtent());
 	}
 }
 
@@ -195,19 +196,13 @@ void ParticleRenderer::ClearHeatmap()
 
 	cmd.Begin();
 	{
-		cmd.AddTextureBarrier(*heatmap,
-			ig::BarrierSync::AllShading, ig::BarrierSync::ClearUnorderedAccessView,
-			ig::BarrierAccess::UnorderedAccess, ig::BarrierAccess::UnorderedAccess,
-			ig::BarrierLayout::_GraphicsQueue_UnorderedAccess, ig::BarrierLayout::_GraphicsQueue_UnorderedAccess);
+		cmd.AddTextureBarrier(*heatmap, ig::SimpleBarrier::Discard, ig::SimpleBarrier::ClearUnorderedAccess);
 		cmd.FlushBarriers();
 
 		std::array<uint32_t, 4> values = { 0, 0, 0, 0 };
 		cmd.ClearUnorderedAccessTextureUInt32(*heatmap, values.data());
 
-		cmd.AddTextureBarrier(*heatmap,
-			ig::BarrierSync::ClearUnorderedAccessView, ig::BarrierSync::ComputeShading,
-			ig::BarrierAccess::UnorderedAccess, ig::BarrierAccess::UnorderedAccess,
-			ig::BarrierLayout::_GraphicsQueue_UnorderedAccess, ig::BarrierLayout::_GraphicsQueue_UnorderedAccess);
+		cmd.AddTextureBarrier(*heatmap, ig::SimpleBarrier::ClearUnorderedAccess, ig::SimpleBarrier::ComputeShaderUnorderedAccess);
 		cmd.FlushBarriers();
 	}
 	cmd.End();
@@ -215,6 +210,7 @@ void ParticleRenderer::ClearHeatmap()
 	context->Submit(cmd);
 	context->WaitForIdleDevice();
 
+	transitionHeatmapLayout = false;
 }
 
 void ParticleRenderer::Render(const ig::Buffer& bufferMP, const ig::Buffer& bufferVP, uint32_t numMP, uint32_t numVP)
@@ -235,7 +231,7 @@ void ParticleRenderer::RenderHeatmap(const ig::Buffer& bufferMP, const ig::Buffe
 	if (!context) throw std::exception();
 	if (graphics.heatmapPixelSize == 0) throw std::runtime_error("heatmap pixel size should never be 0.");
 
-	ig::Extent2D heatmapSize = GetHeatmapSize(context->GetBackBufferSize(), graphics.heatmapPixelSize);
+	ig::Extent2D heatmapSize = GetHeatmapSize(context->GetBackBufferExtent(), graphics.heatmapPixelSize);
 	uint32_t heatmapWidth = heatmapSize.width;
 	uint32_t heatmapHeight = heatmapSize.height;
 
@@ -247,7 +243,7 @@ void ParticleRenderer::RenderHeatmap(const ig::Buffer& bufferMP, const ig::Buffe
 
 	cmd.Begin();
 	{
-		cmd.AddTextureBarrier(context->GetBackBuffer(), ig::SimpleBarrier::Common, ig::SimpleBarrier::RenderTarget, false);
+		cmd.AddTextureBarrier(context->GetBackBuffer(), ig::SimpleBarrier::Discard, ig::SimpleBarrier::RenderTarget);
 		cmd.FlushBarriers();
 
 		cmd.SetRenderTarget(&context->GetBackBuffer());
@@ -265,24 +261,23 @@ void ParticleRenderer::RenderHeatmap(const ig::Buffer& bufferMP, const ig::Buffe
 			cmd.AddBufferBarrier(bufferVP,
 				ig::BarrierSync::ComputeShading, ig::BarrierSync::ComputeShading,
 				ig::BarrierAccess::UnorderedAccess, ig::BarrierAccess::ShaderResource);
+			if (transitionHeatmapLayout && !graphics.clearHeatmap)
+			{
+				transitionHeatmapLayout = false;
+				cmd.AddTextureBarrier(*heatmap, ig::SimpleBarrier::Discard, ig::SimpleBarrier::ComputeShaderUnorderedAccess);
+			}
 			cmd.FlushBarriers();
 
 			if (graphics.clearHeatmap)
 			{
-				cmd.AddTextureBarrier(*heatmap,
-					ig::BarrierSync::AllShading, ig::BarrierSync::ClearUnorderedAccessView,
-					ig::BarrierAccess::UnorderedAccess, ig::BarrierAccess::UnorderedAccess,
-					ig::BarrierLayout::_GraphicsQueue_UnorderedAccess, ig::BarrierLayout::_GraphicsQueue_UnorderedAccess);
+				transitionHeatmapLayout = false;
+				cmd.AddTextureBarrier(*heatmap, ig::SimpleBarrier::Discard, ig::SimpleBarrier::ClearUnorderedAccess);
 				cmd.FlushBarriers();
 
-				// Clear heatmap
 				std::array<uint32_t, 4> clearValues = { 0, 0, 0, 0 };
 				cmd.ClearUnorderedAccessTextureUInt32(*heatmap, clearValues.data());
 
-				cmd.AddTextureBarrier(*heatmap,
-					ig::BarrierSync::ClearUnorderedAccessView, ig::BarrierSync::ComputeShading,
-					ig::BarrierAccess::UnorderedAccess, ig::BarrierAccess::UnorderedAccess,
-					ig::BarrierLayout::_GraphicsQueue_UnorderedAccess, ig::BarrierLayout::_GraphicsQueue_UnorderedAccess);
+				cmd.AddTextureBarrier(*heatmap, ig::SimpleBarrier::ClearUnorderedAccess, ig::SimpleBarrier::ComputeShaderUnorderedAccess);
 				cmd.FlushBarriers();
 			}
 
@@ -338,10 +333,7 @@ void ParticleRenderer::RenderHeatmap(const ig::Buffer& bufferMP, const ig::Buffe
 			cmd.AddBufferBarrier(bufferVP,
 				ig::BarrierSync::ComputeShading, ig::BarrierSync::ComputeShading,
 				ig::BarrierAccess::ShaderResource, ig::BarrierAccess::UnorderedAccess);
-			cmd.AddTextureBarrier(*heatmap,
-				ig::BarrierSync::ComputeShading, ig::BarrierSync::PixelShading,
-				ig::BarrierAccess::UnorderedAccess, ig::BarrierAccess::ShaderResource,
-				ig::BarrierLayout::_GraphicsQueue_UnorderedAccess, ig::BarrierLayout::_GraphicsQueue_ShaderResource);
+			cmd.AddTextureBarrier(*heatmap, ig::SimpleBarrier::ComputeShaderUnorderedAccess, ig::SimpleBarrier::PixelShaderResource);
 			cmd.FlushBarriers();
 		}
 
@@ -365,13 +357,9 @@ void ParticleRenderer::RenderHeatmap(const ig::Buffer& bufferMP, const ig::Buffe
 				1.0f / (float)graphics.heatmapPixelSize);
 
 			cmd.SetPushConstants(&pushConstants, sizeof(pushConstants));
-			cmd.SetPrimitiveTopology(ig::Primitive::TriangleStrip);
 			cmd.Draw(4);
 
-			cmd.AddTextureBarrier(*heatmap,
-				ig::BarrierSync::PixelShading, ig::BarrierSync::ComputeShading,
-				ig::BarrierAccess::ShaderResource, ig::BarrierAccess::UnorderedAccess,
-				ig::BarrierLayout::_GraphicsQueue_ShaderResource, ig::BarrierLayout::_GraphicsQueue_UnorderedAccess);
+			cmd.AddTextureBarrier(*heatmap, ig::SimpleBarrier::PixelShaderResource, ig::SimpleBarrier::ComputeShaderUnorderedAccess);
 			cmd.FlushBarriers();
 		}
 
@@ -405,6 +393,9 @@ void ParticleRenderer::RenderPrimitives(const ig::Buffer& bufferMP, const ig::Bu
 		// If MSAA is requested, we will render onto an MSAA render target.
 		if (useMSAA)
 		{
+			cmd.AddTextureBarrier(*renderTarget, ig::SimpleBarrier::Discard, ig::SimpleBarrier::RenderTarget);
+			cmd.FlushBarriers();
+
 			cmd.SetRenderTarget(renderTarget.get());
 			cmd.SetViewport((float)renderTarget->GetWidth(), (float)renderTarget->GetHeight());
 			cmd.SetScissorRectangle(renderTarget->GetWidth(), renderTarget->GetHeight());
@@ -412,7 +403,7 @@ void ParticleRenderer::RenderPrimitives(const ig::Buffer& bufferMP, const ig::Bu
 		}
 		else
 		{
-			cmd.AddTextureBarrier(context->GetBackBuffer(), ig::SimpleBarrier::Common, ig::SimpleBarrier::RenderTarget, false);
+			cmd.AddTextureBarrier(context->GetBackBuffer(), ig::SimpleBarrier::Discard, ig::SimpleBarrier::RenderTarget);
 			cmd.FlushBarriers();
 
 			cmd.SetRenderTarget(&context->GetBackBuffer());
@@ -466,7 +457,6 @@ void ParticleRenderer::RenderPrimitives(const ig::Buffer& bufferMP, const ig::Bu
 			if (graphics.drawMode == DrawMode::Points)
 			{
 				// Draw mass particles
-				cmd.SetPrimitiveTopology(ig::Primitive::PointList);
 				cmd.Draw(numMP);
 
 				// Draw visual particless
@@ -479,7 +469,6 @@ void ParticleRenderer::RenderPrimitives(const ig::Buffer& bufferMP, const ig::Bu
 			{
 				// Draw mass particles
 				const uint32_t verticesPerQuad = 6;
-				cmd.SetPrimitiveTopology(ig::Primitive::TriangleList);
 				cmd.Draw(numMP * verticesPerQuad);
 
 				// Draw visual particles
@@ -502,12 +491,11 @@ void ParticleRenderer::RenderPrimitives(const ig::Buffer& bufferMP, const ig::Bu
 		if (useMSAA)
 		{
 			cmd.AddTextureBarrier(*renderTarget, ig::SimpleBarrier::RenderTarget, ig::SimpleBarrier::ResolveSource);
-			cmd.AddTextureBarrier(context->GetBackBuffer(), ig::SimpleBarrier::Common, ig::SimpleBarrier::ResolveDest, false);
+			cmd.AddTextureBarrier(context->GetBackBuffer(), ig::SimpleBarrier::Discard, ig::SimpleBarrier::ResolveDest);
 			cmd.FlushBarriers();
 
 			cmd.ResolveTexture(*renderTarget, context->GetBackBuffer());
 
-			cmd.AddTextureBarrier(*renderTarget, ig::SimpleBarrier::ResolveSource, ig::SimpleBarrier::RenderTarget);
 			cmd.AddTextureBarrier(context->GetBackBuffer(), ig::SimpleBarrier::ResolveDest, ig::SimpleBarrier::RenderTarget);
 			cmd.FlushBarriers();
 

@@ -79,6 +79,7 @@ private:
 
 	// The size of the render target texture and heatmap texture
 	ig::Extent2D textureSize;
+	bool transitionHeatmapLayout = false;
 
 	GraphicsParams graphics;
 
